@@ -1,0 +1,158 @@
+name: Build and Release KM271-WIFI Firmware
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - '**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Firmware
+    runs-on: ubuntu-latest
+    container: platformio/platformio-core
+
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+
+      - name: Determine if this is a release
+        id: release_check
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" || "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "release=true" >> $GITHUB_OUTPUT
+          else
+            echo "release=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate semantic version (only for release)
+        if: steps.release_check.outputs.release == 'true'
+        id: semver
+        uses: paulhatch/semantic-version@v5.4.0
+        with:
+          branch: main
+          tag_prefix: "v"
+          major_pattern: "^(feat|fix|refactor)!:"
+          minor_pattern: "^feat:"
+          search_commit_body: true
+          bump_each_commit: true
+
+      - name: Export version
+        if: steps.release_check.outputs.release == 'true'
+        run: |
+          echo "MAJOR=$(echo '${{ steps.semver.outputs.version }}' | cut -d. -f1)" >> $GITHUB_ENV
+          echo "MINOR=$(echo '${{ steps.semver.outputs.version }}' | cut -d. -f2)" >> $GITHUB_ENV
+          echo "PATCH=$(echo '${{ steps.semver.outputs.version }}' | cut -d. -f3)" >> $GITHUB_ENV
+
+      - name: Set fallback version for test builds
+        if: steps.release_check.outputs.release != 'true'
+        run: |
+          echo "MAJOR=0" >> $GITHUB_ENV
+          echo "MINOR=0" >> $GITHUB_ENV
+          echo "PATCH=0" >> $GITHUB_ENV
+
+      - name: Run PlatformIO build (all environments)
+        run: |
+          # Build all environments defined in platformio.ini
+          platformio run --environment=*
+
+      - name: Archive firmware binaries
+        if: steps.release_check.outputs.release == 'true'
+        run: |
+          mkdir -p dist
+          echo "📦 Collecting firmware binaries from all environments..."
+          
+          # Collect all firmware binaries from different environments
+          for dir in .pio/build/*; do
+            env_name=$(basename "$dir")
+            echo "🔍 Checking environment: $env_name"
+            
+            if [ -f "$dir/firmware.bin" ]; then
+              echo "✅ Found firmware.bin for $env_name"
+              cp "$dir/firmware.bin" "dist/${env_name}-firmware-v${{ steps.semver.outputs.version }}.bin"
+            fi
+            
+            # Also check for other common PlatformIO output files
+            if [ -f "$dir/firmware.elf" ]; then
+              echo "📋 Found firmware.elf for $env_name (debug symbols)"
+              cp "$dir/firmware.elf" "dist/${env_name}-firmware-v${{ steps.semver.outputs.version }}.elf"
+            fi
+          done
+          
+          # Also copy the pre-built factory image if it exists
+          if [ -f "blinkenlights-factory.bin" ]; then
+            echo "🏭 Found factory image"
+            cp "blinkenlights-factory.bin" "dist/blinkenlights-factory-v${{ steps.semver.outputs.version }}.bin"
+          fi
+          
+          echo "📋 Final artifact list:"
+          ls -la dist/
+
+      - name: Generate Release Notes
+        if: steps.release_check.outputs.release == 'true'
+        id: release_notes
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { execSync } = require('child_process');
+
+            let latestTag = '';
+            try {
+              latestTag = execSync('git describe --tags --abbrev=0').toString().trim();
+            } catch {
+              latestTag = '';
+            }
+
+            let commitLog = '';
+            if (latestTag) {
+              commitLog = execSync(`git log ${latestTag}..HEAD --pretty=format:"- %s"`).toString();
+            } else {
+              commitLog = execSync('git log --pretty=format:"- %s"').toString();
+            }
+
+            // Zugriff auf PR-Beschreibung
+            let prText = '';
+            if (context.payload.pull_request) {
+              prText = context.payload.pull_request.body || '';
+            }
+
+            const notes = `## KM271-WIFI Firmware Release v${{ steps.semver.outputs.version }}
+
+            ### Hardware Revision Support
+            This firmware supports Hardware Revision 0.0.6 (HW_REV=000006) as configured in platformio.ini.
+
+            ### Changes
+            ${prText ? prText + '\n\n' : ''}${commitLog}
+
+            ### Binary Files
+            - \`esp32dev-firmware-v${{ steps.semver.outputs.version }}.bin\` - Main firmware binary
+            - \`blinkenlights-factory-v${{ steps.semver.outputs.version }}.bin\` - Factory image (if available)
+
+            ### Flash Instructions
+            Use the provided PowerShell script or flash manually:
+            \`\`\`
+            esptool.py --chip esp32 --port /dev/ttyUSB0 --baud 921600 write_flash 0x10000 esp32dev-firmware-v${{ steps.semver.outputs.version }}.bin
+            \`\`\`
+            `;
+            core.setOutput('body', notes);
+
+      - name: Create GitHub Release
+        if: steps.release_check.outputs.release == 'true' && steps.semver.outputs.version != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.semver.outputs.version }}
+          name: KM271-WIFI Release v${{ steps.semver.outputs.version }}
+          body: ${{ steps.release_notes.outputs.body }}
+          files: dist/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
