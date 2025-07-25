@@ -47,8 +47,8 @@ jobs:
         with:
           branch: main
           tag_prefix: "v"
-          major_pattern: "^(feat|fix|refactor)!:"
-          minor_pattern: "^feat:"
+          major_pattern: "/^(feat|fix|refactor)!:/"
+          minor_pattern: "/^feat:/"
           search_commit_body: true
           bump_each_commit: true
 
