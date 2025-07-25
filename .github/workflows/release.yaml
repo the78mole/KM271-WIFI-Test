@@ -13,7 +13,7 @@ jobs:
   build:
     name: Build Firmware
     runs-on: ubuntu-latest
-    container: platformio/platformio-core
+    container: ghcr.io/the78mole/platformio-docker:v0.0.1
 
     permissions:
       contents: write
@@ -26,10 +26,15 @@ jobs:
           fetch-depth: 0
           submodules: true
 
+      - name: Fix git ownership (for Docker container)
+        run: |
+          git config --global --add safe.directory /__w/KM271-WIFI-Test/KM271-WIFI-Test
+          git config --global --add safe.directory ${{ github.workspace }}
+
       - name: Determine if this is a release
         id: release_check
         run: |
-          if [[ "${{ github.ref }}" == "refs/heads/main" || "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          if [ "${{ github.ref }}" = "refs/heads/main" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "release=true" >> $GITHUB_OUTPUT
           else
             echo "release=false" >> $GITHUB_OUTPUT
@@ -64,7 +69,8 @@ jobs:
       - name: Run PlatformIO build (all environments)
         run: |
           # Build all environments defined in platformio.ini
-          platformio run --environment=*
+          # Using 'pio run' without --environment builds all environments by default
+          platformio run
 
       - name: Archive firmware binaries
         if: steps.release_check.outputs.release == 'true'
