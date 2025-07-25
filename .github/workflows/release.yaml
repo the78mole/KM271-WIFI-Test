@@ -72,6 +72,16 @@ jobs:
           # Using 'pio run' without --environment builds all environments by default
           platformio run
 
+      - name: Create factory image
+        run: |
+          echo "🏭 Creating factory image with esptool..."
+          # Create factory image with bootloader, partitions, and firmware
+          esptool --chip esp32 merge-bin -o KM271-WIFI-factory.bin \
+            0x1000 .pio/build/esp32dev/bootloader.bin \
+            0x8000 .pio/build/esp32dev/partitions.bin \
+            0x10000 .pio/build/esp32dev/firmware.bin
+          echo "✅ Factory image created: $(ls -lh KM271-WIFI-factory.bin)"
+
       - name: Archive firmware binaries
         if: steps.release_check.outputs.release == 'true'
         run: |
@@ -85,20 +95,20 @@ jobs:
             
             if [ -f "$dir/firmware.bin" ]; then
               echo "✅ Found firmware.bin for $env_name"
-              cp "$dir/firmware.bin" "dist/${env_name}-firmware-v${{ steps.semver.outputs.version }}.bin"
+              cp "$dir/firmware.bin" "dist/KM271-WIFI-${env_name}-firmware-v${{ steps.semver.outputs.version }}.bin"
             fi
             
             # Also check for other common PlatformIO output files
             if [ -f "$dir/firmware.elf" ]; then
               echo "📋 Found firmware.elf for $env_name (debug symbols)"
-              cp "$dir/firmware.elf" "dist/${env_name}-firmware-v${{ steps.semver.outputs.version }}.elf"
+              cp "$dir/firmware.elf" "dist/KM271-WIFI-${env_name}-firmware-v${{ steps.semver.outputs.version }}.elf"
             fi
           done
           
-          # Also copy the pre-built factory image if it exists
-          if [ -f "blinkenlights-factory.bin" ]; then
+          # Also copy the factory image
+          if [ -f "KM271-WIFI-factory.bin" ]; then
             echo "🏭 Found factory image"
-            cp "blinkenlights-factory.bin" "dist/blinkenlights-factory-v${{ steps.semver.outputs.version }}.bin"
+            cp "KM271-WIFI-factory.bin" "dist/KM271-WIFI-factory-v${{ steps.semver.outputs.version }}.bin"
           fi
           
           echo "📋 Final artifact list:"
@@ -141,13 +151,18 @@ jobs:
             ${prText ? prText + '\n\n' : ''}${commitLog}
 
             ### Binary Files
-            - \`esp32dev-firmware-v${{ steps.semver.outputs.version }}.bin\` - Main firmware binary
-            - \`blinkenlights-factory-v${{ steps.semver.outputs.version }}.bin\` - Factory image (if available)
+            - \`KM271-WIFI-esp32dev-firmware-v${{ steps.semver.outputs.version }}.bin\` - Main firmware binary
+            - \`KM271-WIFI-factory-v${{ steps.semver.outputs.version }}.bin\` - Complete factory image
 
             ### Flash Instructions
-            Use the provided PowerShell script or flash manually:
+            **For firmware updates (existing device):**
             \`\`\`
-            esptool.py --chip esp32 --port /dev/ttyUSB0 --baud 921600 write_flash 0x10000 esp32dev-firmware-v${{ steps.semver.outputs.version }}.bin
+            esptool --chip esp32 --port /dev/ttyUSB0 --baud 921600 write_flash 0x10000 KM271-WIFI-esp32dev-firmware-v${{ steps.semver.outputs.version }}.bin
+            \`\`\`
+            
+            **For complete flash (new device):**
+            \`\`\`
+            esptool --chip esp32 --port /dev/ttyUSB0 --baud 921600 write_flash 0x0 KM271-WIFI-factory-v${{ steps.semver.outputs.version }}.bin
             \`\`\`
             `;
             core.setOutput('body', notes);
