@@ -1,8 +1,9 @@
 # KM271-WIFI Firmware
 
-[![Build and Release](https://github.com/the78mole/KM271-WIFI-Test/actions/workflows/release.yaml/badge.svg)](https://github.com/the78mole/KM271-WIFI-Test/actions/workflows/release.yaml)
-[![Latest Release](https://img.shields.io/github/v/release/the78mole/KM271-WIFI-Test?label=Release&color=success)](https://github.com/the78mole/KM271-WIFI-Test/releases/latest)
+[![Build and Release](https://github.com/the78mole/KM271-WIFI-Test/actions/workflows/release.yaml/badge.svg)](https://github.com/the78mole/KM271-WIFI-Test/actions/workflows/release.yaml)[![Current Release](https://img.shields.io/github/release/the78mole/KM271-WIFI-Test.svg)](https://github.com/the78mole/KM271-WIFI-Test/releases/latest)    
+![GitHub Release Date](https://img.shields.io/github/release-date/the78mole/KM271-WIFI-Test)   
 [![GitHub Downloads](https://img.shields.io/github/downloads/the78mole/KM271-WIFI-Test/total?label=Downloads&color=blue)](https://github.com/the78mole/KM271-WIFI-Test/releases)
+
 [![PlatformIO CI](https://img.shields.io/badge/PlatformIO-CI-orange.svg)](https://platformio.org/)
 [![ESP32](https://img.shields.io/badge/ESP32-Espressif-red.svg)](https://www.espressif.com/en/products/socs/esp32)
 [![License](https://img.shields.io/github/license/the78mole/KM271-WIFI-Test?color=lightgrey)](LICENSE)
