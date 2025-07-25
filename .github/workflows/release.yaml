@@ -13,7 +13,7 @@ jobs:
   build:
     name: Build Firmware
     runs-on: ubuntu-latest
-    container: ghcr.io/the78mole/platformio-docker:v0.0.1
+    container: ghcr.io/the78mole/platformio-docker:v1.0.0
 
     permissions:
       contents: write
@@ -75,11 +75,31 @@ jobs:
       - name: Create factory image
         run: |
           echo "🏭 Creating factory image with esptool..."
-          # Create factory image with bootloader, partitions, and firmware
-          esptool --chip esp32 merge-bin -o KM271-WIFI-factory.bin \
-            0x1000 .pio/build/esp32dev/bootloader.bin \
-            0x8000 .pio/build/esp32dev/partitions.bin \
-            0x10000 .pio/build/esp32dev/firmware.bin
+          
+          # Use modern esptool command (without .py suffix)
+          ESPTOOL_CMD="esptool"
+          echo "🔧 Using esptool command: $ESPTOOL_CMD"
+          
+          # Get dynamic offsets from PlatformIO build data
+          if [ -f ".pio/build/esp32dev/idedata.json" ]; then
+            echo "📋 Reading offsets from idedata.json..."
+            BOOTLOADER_OFFSET=$(python3 -c "import json; data=json.load(open('.pio/build/esp32dev/idedata.json')); print(data.get('flash_images', [{}])[0].get('offset', '0x1000'))")
+            # For ESP32, partitions are typically at 0x8000 and firmware at 0x10000
+            PARTITIONS_OFFSET="0x8000"
+            FIRMWARE_OFFSET="0x10000"
+            echo "🔧 Using dynamic bootloader offset: $BOOTLOADER_OFFSET"
+          else
+            echo "⚠️  idedata.json not found, using default offsets"
+            BOOTLOADER_OFFSET="0x1000"
+            PARTITIONS_OFFSET="0x8000"
+            FIRMWARE_OFFSET="0x10000"
+          fi
+          
+          # Create factory image with bootloader, partitions, and firmware (using modern merge-bin)
+          $ESPTOOL_CMD --chip esp32 merge-bin -o KM271-WIFI-factory.bin \
+            $BOOTLOADER_OFFSET .pio/build/esp32dev/bootloader.bin \
+            $PARTITIONS_OFFSET .pio/build/esp32dev/partitions.bin \
+            $FIRMWARE_OFFSET .pio/build/esp32dev/firmware.bin
           echo "✅ Factory image created: $(ls -lh KM271-WIFI-factory.bin)"
 
       - name: Archive firmware binaries
