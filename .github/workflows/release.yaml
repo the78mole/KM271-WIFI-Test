@@ -72,35 +72,48 @@ jobs:
           # Using 'pio run' without --environment builds all environments by default
           platformio run
 
-      - name: Create factory image
+      - name: Create factory images
         run: |
-          echo "🏭 Creating factory image with esptool..."
+          echo "🏭 Creating factory images with esptool..."
           
           # Use modern esptool command (without .py suffix)
           ESPTOOL_CMD="esptool"
           echo "🔧 Using esptool command: $ESPTOOL_CMD"
           
-          # Get dynamic offsets from PlatformIO build data
-          if [ -f ".pio/build/esp32dev/idedata.json" ]; then
-            echo "📋 Reading offsets from idedata.json..."
-            BOOTLOADER_OFFSET=$(python3 -c "import json; data=json.load(open('.pio/build/esp32dev/idedata.json')); print(data.get('flash_images', [{}])[0].get('offset', '0x1000'))")
-            # For ESP32, partitions are typically at 0x8000 and firmware at 0x10000
-            PARTITIONS_OFFSET="0x8000"
-            FIRMWARE_OFFSET="0x10000"
-            echo "🔧 Using dynamic bootloader offset: $BOOTLOADER_OFFSET"
-          else
-            echo "⚠️  idedata.json not found, using default offsets"
-            BOOTLOADER_OFFSET="0x1000"
-            PARTITIONS_OFFSET="0x8000"
-            FIRMWARE_OFFSET="0x10000"
-          fi
-          
-          # Create factory image with bootloader, partitions, and firmware (using modern merge-bin)
-          $ESPTOOL_CMD --chip esp32 merge-bin -o KM271-WIFI-factory.bin \
-            $BOOTLOADER_OFFSET .pio/build/esp32dev/bootloader.bin \
-            $PARTITIONS_OFFSET .pio/build/esp32dev/partitions.bin \
-            $FIRMWARE_OFFSET .pio/build/esp32dev/firmware.bin
-          echo "✅ Factory image created: $(ls -lh KM271-WIFI-factory.bin)"
+          # Create factory image for each built environment
+          for dir in .pio/build/*; do
+            env_name=$(basename "$dir")
+            echo "🔍 Processing environment: $env_name"
+            
+            if [ -f "$dir/firmware.bin" ] && [ -f "$dir/bootloader.bin" ] && [ -f "$dir/partitions.bin" ]; then
+              echo "✅ Found all required binaries for $env_name"
+              
+              # Get dynamic offsets from PlatformIO build data
+              if [ -f "$dir/idedata.json" ]; then
+                echo "📋 Reading offsets from $env_name/idedata.json..."
+                BOOTLOADER_OFFSET=$(python3 -c "import json; data=json.load(open('$dir/idedata.json')); print(data.get('flash_images', [{}])[0].get('offset', '0x1000'))")
+                # For ESP32, partitions are typically at 0x8000 and firmware at 0x10000
+                PARTITIONS_OFFSET="0x8000"
+                FIRMWARE_OFFSET="0x10000"
+                echo "🔧 Using dynamic bootloader offset for $env_name: $BOOTLOADER_OFFSET"
+              else
+                echo "⚠️  idedata.json not found for $env_name, using default offsets"
+                BOOTLOADER_OFFSET="0x1000"
+                PARTITIONS_OFFSET="0x8000"
+                FIRMWARE_OFFSET="0x10000"
+              fi
+              
+              # Create factory image with bootloader, partitions, and firmware (using modern merge-bin)
+              factory_filename="KM271-WIFI-${env_name}-factory.bin"
+              $ESPTOOL_CMD --chip esp32 merge-bin -o "$factory_filename" \
+                $BOOTLOADER_OFFSET "$dir/bootloader.bin" \
+                $PARTITIONS_OFFSET "$dir/partitions.bin" \
+                $FIRMWARE_OFFSET "$dir/firmware.bin"
+              echo "✅ Factory image created for $env_name: $(ls -lh $factory_filename)"
+            else
+              echo "⚠️  Missing binaries for $env_name, skipping factory image"
+            fi
+          done
 
       - name: Archive firmware binaries
         if: steps.release_check.outputs.release == 'true'
@@ -125,11 +138,13 @@ jobs:
             fi
           done
           
-          # Also copy the factory image
-          if [ -f "KM271-WIFI-factory.bin" ]; then
-            echo "🏭 Found factory image"
-            cp "KM271-WIFI-factory.bin" "dist/KM271-WIFI-factory-v${{ steps.semver.outputs.version }}.bin"
-          fi
+          # Also copy all factory images
+          for factory_file in KM271-WIFI-*-factory.bin; do
+            if [ -f "$factory_file" ]; then
+              echo "🏭 Found factory image: $factory_file"
+              cp "$factory_file" "dist/$(basename "$factory_file" .bin)-v${{ steps.semver.outputs.version }}.bin"
+            fi
+          done
           
           echo "📋 Final artifact list:"
           ls -la dist/
@@ -172,7 +187,9 @@ jobs:
 
             ### Binary Files
             - \`KM271-WIFI-esp32dev-firmware-v${{ steps.semver.outputs.version }}.bin\` - Main firmware binary
-            - \`KM271-WIFI-factory-v${{ steps.semver.outputs.version }}.bin\` - Complete factory image
+            - \`KM271-WIFI-esp32dev-factory-v${{ steps.semver.outputs.version }}.bin\` - Complete factory image
+            
+            Additional binaries may be available for other hardware revisions if configured.
 
             ### Flash Instructions
             **For firmware updates (existing device):**
